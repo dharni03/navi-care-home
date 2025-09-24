@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -63,6 +64,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   userName = "User" 
 }) => {
   const t = translations[language as keyof typeof translations] || translations.en;
+  const navigate = useNavigate();
 
   const speakText = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -78,7 +80,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       description: t.bookAppointmentDesc,
       icon: Calendar,
       variant: 'healthcare' as const,
-      action: () => console.log('Book appointment'),
+      action: () => navigate('/book'),
     },
     {
       title: t.firstAid,
@@ -92,14 +94,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       description: t.patientHistoryDesc,
       icon: History,
       variant: 'soft' as const,
-      action: () => console.log('Patient history'),
+      action: () => navigate('/appointments'),
     },
     {
       title: t.findHospitals,
       description: t.findHospitalsDesc,
       icon: MapPin,
       variant: 'soft' as const,
-      action: () => console.log('Find hospitals'),
+      action: () => navigate('/doctors'),
     },
   ];
 
@@ -127,7 +129,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               >
                 <Volume2 className="w-5 h-5" />
               </Button>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/profile')}>
                 <Settings className="w-5 h-5" />
               </Button>
             </div>
@@ -149,7 +151,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   <p className="text-muted-foreground">{t.emergencyDesc}</p>
                 </div>
               </div>
-              <Button variant="emergency" size="xl" className="min-w-48">
+              <Button
+                variant="emergency"
+                size="xl"
+                className="min-w-48"
+                onClick={() => {
+                  window.location.href = 'tel:8610016966';
+                }}
+              >
                 <Phone className="mr-2 w-6 h-6" />
                 {t.emergency}
               </Button>

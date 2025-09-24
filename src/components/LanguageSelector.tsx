@@ -39,6 +39,9 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onLanguageSelect })
   const handleLanguageSelect = (language: Language) => {
     setSelectedLanguage(language.code);
     speakText(`Language selected: ${language.name}`, language.code);
+    try {
+      localStorage.setItem('language', language.code);
+    } catch (_) {}
     setTimeout(() => {
       onLanguageSelect(language);
     }, 1000);

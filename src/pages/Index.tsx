@@ -78,7 +78,32 @@ const Index = () => {
         .single();
 
       if (error) {
-        console.error('Error fetching user profile:', error);
+        // If no profile, create one using auth metadata
+        if ((error as any).code === 'PGRST116' || error.message?.includes('No rows')) {
+          const md: any = user?.user_metadata || {};
+          const newUserType = (md.user_type as UserType) || 'patient';
+          const username = md.username || user!.email?.split('@')[0] || `user_${user!.id.slice(0, 6)}`;
+          const fullName = md.full_name || username;
+
+          const { data: createdProfile, error: createErr } = await supabase
+            .from('profiles')
+            .insert({ user_id: user!.id, username, full_name: fullName, user_type: newUserType })
+            .select('id, user_type')
+            .single();
+          if (!createErr && createdProfile) {
+            // For patients, create minimal patient record
+            if (createdProfile.user_type === 'patient') {
+              await supabase.from('patients').insert({ profile_id: createdProfile.id });
+            }
+            setUserProfile({ user_type: createdProfile.user_type as any });
+            setUserType(createdProfile.user_type as UserType);
+            setCurrentState('language');
+          } else {
+            console.error('Error creating profile:', createErr);
+          }
+        } else {
+          console.error('Error fetching user profile:', error);
+        }
       } else if (data) {
         setUserProfile(data as UserProfile);
         setUserType(data.user_type as UserType);
@@ -125,6 +150,13 @@ const Index = () => {
   }
 
   if (currentState === 'language') {
+    // If language already saved, skip language selection
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('language') : null;
+    if (saved) {
+      setSelectedLanguage({ code: saved, name: saved, nativeName: saved, flag: '' });
+      setCurrentState('userType');
+      return null;
+    }
     return <LanguageSelector onLanguageSelect={handleLanguageSelect} />;
   }
 

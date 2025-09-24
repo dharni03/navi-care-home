@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { 
   Building2, 
   Users, 
@@ -74,6 +78,8 @@ const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
   hospitalName = "City Hospital" 
 }) => {
   const t = translations[language as keyof typeof translations] || translations.en;
+  const navigate = useNavigate();
+  const [hospitalId, setHospitalId] = useState<string | null>(null);
 
   const speakText = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -89,36 +95,142 @@ const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
       description: t.managePatientsDesc,
       icon: Users,
       variant: 'healthcare' as const,
-      action: () => console.log('Manage patients'),
+      action: () => navigate('/patients'),
     },
     {
       title: t.manageDoctors,
       description: t.manageDoctorsDesc,
       icon: Stethoscope,
       variant: 'secondary' as const,
-      action: () => console.log('Manage doctors'),
+      action: () => navigate('/doctors'),
     },
     {
       title: t.viewAppointments,
       description: t.viewAppointmentsDesc,
       icon: Calendar,
       variant: 'soft' as const,
-      action: () => console.log('View appointments'),
+      action: () => navigate('/appointments'),
     },
     {
       title: t.emergencyAlerts,
       description: t.emergencyAlertsDesc,
       icon: AlertTriangle,
       variant: 'warning' as const,
-      action: () => console.log('Emergency alerts'),
+      action: () => navigate('/emergency'),
     },
   ];
 
+  const [patientCount, setPatientCount] = useState<number | null>(null);
+  const [doctorCount, setDoctorCount] = useState<number | null>(null);
+  const [todayAppointmentCount, setTodayAppointmentCount] = useState<number | null>(null);
+  const [activeEmergencyCount, setActiveEmergencyCount] = useState<number | null>(null);
+  const [addDoctorOpen, setAddDoctorOpen] = useState(false);
+  const [addPatientOpen, setAddPatientOpen] = useState(false);
+  const [newDoctor, setNewDoctor] = useState({ name: '', specialization: '', qualification: '', experience_years: '', available_hours: '', consultation_fee: '' });
+  const [patientLookup, setPatientLookup] = useState({ phone: '', username: '' });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const loadCounts = async () => {
+      // Resolve current hospital id for inserts
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (uid) {
+        const { data: prof } = await supabase.from('profiles').select('id').eq('user_id', uid).single();
+        if (prof?.id) {
+          const { data: hosp } = await supabase.from('hospitals').select('id').eq('profile_id', prof.id).maybeSingle();
+          if (hosp?.id) setHospitalId(hosp.id);
+        }
+      }
+
+      // Patients count
+      const { count: patientsCnt } = await supabase
+        .from('patients')
+        .select('*', { count: 'exact', head: true });
+      setPatientCount(patientsCnt ?? 0);
+
+      // Doctors count
+      const { count: doctorsCnt } = await supabase
+        .from('doctors')
+        .select('*', { count: 'exact', head: true });
+      setDoctorCount(doctorsCnt ?? 0);
+
+      // Today's appointments count
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      const { count: apptCnt } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('appointment_date', todayStr);
+      setTodayAppointmentCount(apptCnt ?? 0);
+
+      // Active emergencies count
+      const { count: emergCnt } = await supabase
+        .from('emergency_alerts')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+      setActiveEmergencyCount(emergCnt ?? 0);
+    };
+    loadCounts();
+  }, []);
+
+  const handleCreateDoctor = async () => {
+    if (!hospitalId) return;
+    if (!newDoctor.name || !newDoctor.specialization) return;
+    setSubmitting(true);
+    const payload: any = {
+      hospital_id: hospitalId,
+      name: newDoctor.name,
+      specialization: newDoctor.specialization,
+    };
+    if (newDoctor.qualification) payload.qualification = newDoctor.qualification;
+    if (newDoctor.experience_years) payload.experience_years = Number(newDoctor.experience_years) || null;
+    if (newDoctor.available_hours) payload.available_hours = newDoctor.available_hours;
+    if (newDoctor.consultation_fee) payload.consultation_fee = Number(newDoctor.consultation_fee) || null;
+    const { error } = await supabase.from('doctors').insert(payload);
+    setSubmitting(false);
+    if (!error) {
+      setAddDoctorOpen(false);
+      setNewDoctor({ name: '', specialization: '', qualification: '', experience_years: '', available_hours: '', consultation_fee: '' });
+      const { count } = await supabase.from('doctors').select('*', { count: 'exact', head: true });
+      setDoctorCount(count ?? doctorCount);
+    }
+  };
+
+  const handleCreatePatient = async () => {
+    // Requires an existing profile to attach patient record to
+    if (!patientLookup.phone && !patientLookup.username) return;
+    setSubmitting(true);
+    let profileId: string | null = null;
+    if (patientLookup.phone) {
+      const { data: profByPhone } = await supabase.from('profiles').select('id').eq('phone', patientLookup.phone).maybeSingle();
+      profileId = profByPhone?.id || null;
+    }
+    if (!profileId && patientLookup.username) {
+      const { data: profByUsername } = await supabase.from('profiles').select('id').eq('username', patientLookup.username).maybeSingle();
+      profileId = profByUsername?.id || null;
+    }
+    if (profileId) {
+      const { data: existing } = await supabase.from('patients').select('id').eq('profile_id', profileId).maybeSingle();
+      if (!existing) {
+        await supabase.from('patients').insert({ profile_id: profileId });
+      }
+      const { count } = await supabase.from('patients').select('*', { count: 'exact', head: true });
+      setPatientCount(count ?? patientCount);
+    }
+    setSubmitting(false);
+    setAddPatientOpen(false);
+    setPatientLookup({ phone: '', username: '' });
+  };
+
   const stats = [
-    { label: t.patients, value: 248, icon: Users, color: 'primary' },
-    { label: t.doctors, value: 24, icon: Stethoscope, color: 'secondary' },
-    { label: t.appointments, value: 35, icon: Calendar, color: 'success' },
-    { label: t.emergencies, value: 3, icon: AlertTriangle, color: 'warning' },
+    { label: t.patients, value: patientCount ?? '—', icon: Users, color: 'primary' },
+    { label: t.doctors, value: doctorCount ?? '—', icon: Stethoscope, color: 'secondary' },
+    { label: t.appointments, value: todayAppointmentCount ?? '—', icon: Calendar, color: 'success' },
+    { label: t.emergencies, value: activeEmergencyCount ?? '—', icon: AlertTriangle, color: 'warning' },
   ];
 
   return (
@@ -151,7 +263,7 @@ const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
               >
                 <Volume2 className="w-5 h-5" />
               </Button>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/profile')}>
                 <Settings className="w-5 h-5" />
               </Button>
             </div>
@@ -234,11 +346,11 @@ const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             </div>
             
             <div className="flex gap-2">
-              <Button variant="soft">
+              <Button variant="soft" onClick={() => setAddDoctorOpen(true)} disabled={!hospitalId}>
                 <Plus className="mr-2 w-4 h-4" />
                 {t.addDoctor}
               </Button>
-              <Button variant="soft">
+              <Button variant="soft" onClick={() => setAddPatientOpen(true)}>
                 <Plus className="mr-2 w-4 h-4" />
                 {t.addPatient}
               </Button>
@@ -274,6 +386,49 @@ const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
           </div>
         </div>
       </main>
+
+      {/* Add Doctor Dialog */}
+      <Dialog open={addDoctorOpen} onOpenChange={setAddDoctorOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Doctor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input placeholder="Full name" value={newDoctor.name} onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })} />
+            <Input placeholder="Specialization" value={newDoctor.specialization} onChange={(e) => setNewDoctor({ ...newDoctor, specialization: e.target.value })} />
+            <Input placeholder="Qualification (optional)" value={newDoctor.qualification} onChange={(e) => setNewDoctor({ ...newDoctor, qualification: e.target.value })} />
+            <Input placeholder="Experience years (optional)" type="number" value={newDoctor.experience_years} onChange={(e) => setNewDoctor({ ...newDoctor, experience_years: e.target.value })} />
+            <Input placeholder="Available hours (e.g., 09:00-17:00)" value={newDoctor.available_hours} onChange={(e) => setNewDoctor({ ...newDoctor, available_hours: e.target.value })} />
+            <Input placeholder="Consultation fee (optional)" type="number" value={newDoctor.consultation_fee} onChange={(e) => setNewDoctor({ ...newDoctor, consultation_fee: e.target.value })} />
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setAddDoctorOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateDoctor} disabled={submitting || !hospitalId || !newDoctor.name || !newDoctor.specialization}>
+              {submitting ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Patient Dialog */}
+      <Dialog open={addPatientOpen} onOpenChange={setAddPatientOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Patient</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input placeholder="Lookup by phone" value={patientLookup.phone} onChange={(e) => setPatientLookup({ ...patientLookup, phone: e.target.value })} />
+            <Input placeholder="or lookup by username" value={patientLookup.username} onChange={(e) => setPatientLookup({ ...patientLookup, username: e.target.value })} />
+            <p className="text-xs text-muted-foreground">Patient must already have a profile. We will create the patient record if missing.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setAddPatientOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreatePatient} disabled={submitting || (!patientLookup.phone && !patientLookup.username)}>
+              {submitting ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

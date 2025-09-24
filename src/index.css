@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Position n8n chat widget at bottom-left across the app */
+.n8n-chat-widget .chat-toggle {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: auto;
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */

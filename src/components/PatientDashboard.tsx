@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { 
   Calendar, 
   AlertTriangle, 
@@ -13,6 +14,7 @@ import {
   Settings,
   History
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PatientDashboardProps {
   language: string;
@@ -65,6 +67,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
 }) => {
   const t = translations[language as keyof typeof translations] || translations.en;
   const navigate = useNavigate();
+  const [appointments, setAppointments] = useState<Array<{
+    id: string;
+    appointment_date: string;
+    appointment_time: string;
+    status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
+    reason: string | null;
+  }>>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState<boolean>(true);
 
   const speakText = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -104,6 +114,35 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       action: () => navigate('/doctors'),
     },
   ];
+
+  useEffect(() => {
+    const loadAppointments = async () => {
+      setLoadingAppointments(true);
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (!uid) {
+        setLoadingAppointments(false);
+        return;
+      }
+      const { data: prof } = await supabase.from('profiles').select('id').eq('user_id', uid).single();
+      const { data: patient } = await supabase
+        .from('patients')
+        .select('id')
+        .eq('profile_id', prof?.id || '')
+        .maybeSingle();
+      if (patient?.id) {
+        const { data } = await supabase
+          .from('appointments')
+          .select('id, appointment_date, appointment_time, status, reason')
+          .eq('patient_id', patient.id)
+          .order('appointment_date', { ascending: false })
+          .order('appointment_time', { ascending: false });
+        if (data) setAppointments(data as any);
+      }
+      setLoadingAppointments(false);
+    };
+    loadAppointments();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-light via-background to-secondary-light">
@@ -156,7 +195,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
                 size="xl"
                 className="min-w-48"
                 onClick={() => {
-                  window.location.href = 'tel:8610016966';
+                  window.location.href = 'tel:8940834565';
                 }}
               >
                 <Phone className="mr-2 w-6 h-6" />
@@ -224,12 +263,31 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               </Button>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No recent appointments or activities</p>
-              <p className="text-sm">Book your first appointment to get started</p>
-            </div>
+          <CardContent className="space-y-3">
+            {loadingAppointments ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Loading your appointments...</p>
+              </div>
+            ) : appointments.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No recent appointments or activities</p>
+                <p className="text-sm">Book your first appointment to get started</p>
+              </div>
+            ) : (
+              appointments.map((a) => (
+                <div key={a.id} className="flex items-center justify-between border rounded-md p-3">
+                  <div>
+                    <div className="font-medium">{a.reason || 'General Consultation'}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {new Date(a.appointment_date).toDateString()} • {a.appointment_time}
+                    </div>
+                  </div>
+                  <Badge className="capitalize">{a.status}</Badge>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </main>

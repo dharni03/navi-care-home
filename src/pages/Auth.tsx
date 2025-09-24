@@ -1,147 +1,142 @@
 import React, { useState, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { Stethoscope, User, Building2, ArrowLeft } from "lucide-react";
-import { z } from "zod";
-
-interface Location {
-  id: string;
-  name: string;
-  type: string;
-  state: string;
-}
-
-const authSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  username: z.string().min(3, "Username must be at least 3 characters"),
-  fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  phone: z.string().optional(),
-});
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, Heart, Users, Hospital } from 'lucide-react';
 
 const Auth = () => {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
   const [userType, setUserType] = useState<'patient' | 'hospital'>('patient');
-  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    username: '',
-    fullName: '',
-    phone: '',
-    locationId: '',
-  });
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchLocations();
-  }, []);
-
-  const fetchLocations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .order('name');
-      
-      if (error) throw error;
-      setLocations(data || []);
-    } catch (error) {
-      console.error('Error fetching locations:', error);
-    }
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const validateForm = () => {
-    try {
-      authSchema.parse(formData);
-      if (isSignUp && !formData.locationId) {
-        throw new Error("Please select a location");
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/');
       }
-      return true;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        toast({
-          variant: "destructive",
-          description: error.issues[0].message,
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          description: error instanceof Error ? error.message : "Validation failed",
-        });
-      }
-      return false;
-    }
-  };
+    });
 
-  const handleSignUp = async () => {
-    if (!validateForm()) return;
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        navigate('/');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!email || !password || !username || !fullName) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setLoading(true);
+    
     try {
-      const redirectUrl = `${window.location.origin}/`;
-      
       const { error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
+        email,
+        password,
         options: {
-          emailRedirectTo: redirectUrl,
+          emailRedirectTo: `${window.location.origin}/`,
           data: {
-            username: formData.username,
-            full_name: formData.fullName,
-            phone: formData.phone,
-            user_type: userType,
-            location_id: formData.locationId,
+            username,
+            full_name: fullName,
+            user_type: userType
           }
         }
       });
 
-      if (error) throw error;
-
+      if (error) {
+        if (error.message.includes('already registered')) {
+          toast({
+            title: "Account exists",
+            description: "This email is already registered. Please sign in instead.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Sign up failed",
+            description: error.message,
+            variant: "destructive"
+          });
+        }
+      } else {
+        toast({
+          title: "Account created successfully!",
+          description: "Please check your email to verify your account.",
+        });
+      }
+    } catch (error) {
       toast({
-        description: "Please check your email to confirm your account.",
-      });
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        description: error.message || "An error occurred during sign up",
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSignIn = async () => {
-    if (!formData.email || !formData.password) {
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!email || !password) {
       toast({
-        variant: "destructive",
-        description: "Please enter email and password",
+        title: "Error",
+        description: "Please enter both email and password",
+        variant: "destructive"
       });
       return;
     }
 
     setLoading(true);
+    
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password,
+        email,
+        password
       });
 
-      if (error) throw error;
-    } catch (error: any) {
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          toast({
+            title: "Sign in failed",
+            description: "Invalid email or password. Please check your credentials.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Sign in failed",
+            description: error.message,
+            variant: "destructive"
+          });
+        }
+      }
+    } catch (error) {
       toast({
-        variant: "destructive",
-        description: error.message || "An error occurred during sign in",
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
@@ -149,152 +144,154 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Stethoscope className="h-12 w-12 text-primary" />
+    <div className="min-h-screen bg-gradient-to-br from-health-light to-health-accent/20 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1 text-center">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Heart className="h-8 w-8 text-health-primary" />
+            <h1 className="text-2xl font-bold text-health-dark">Rural Health Navigator</h1>
           </div>
-          <h1 className="text-3xl font-bold text-primary">Rural Health Navigator</h1>
-          <p className="text-muted-foreground mt-2">Healthcare Access for Rural Communities</p>
-        </div>
+          <CardTitle className="text-xl">Welcome</CardTitle>
+          <CardDescription>
+            Sign in to your account or create a new one
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="signin" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="signin">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            </TabsList>
 
-        <Card className="shadow-xl border-2 border-primary/10">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">
-              {isSignUp ? 'Create Account' : 'Welcome Back'}
-            </CardTitle>
-            <CardDescription>
-              {isSignUp 
-                ? 'Sign up to access healthcare services' 
-                : 'Sign in to your account'
-              }
-            </CardDescription>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            {isSignUp && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <Button
-                    type="button"
-                    variant={userType === 'patient' ? 'default' : 'outline'}
-                    onClick={() => setUserType('patient')}
-                    className="flex items-center gap-2 h-12"
-                  >
-                    <User className="h-4 w-4" />
-                    Patient
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={userType === 'hospital' ? 'default' : 'outline'}
-                    onClick={() => setUserType('hospital')}
-                    className="flex items-center gap-2 h-12"
-                  >
-                    <Building2 className="h-4 w-4" />
-                    Hospital
-                  </Button>
+            <TabsContent value="signin" className="space-y-4">
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signin-email">Email</Label>
+                  <Input
+                    id="signin-email"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signin-password">Password</Label>
+                  <Input
+                    id="signin-password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    'Sign In'
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
 
+            <TabsContent value="signup" className="space-y-4">
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="user-type">User Type</Label>
+                  <Select value={userType} onValueChange={(value: 'patient' | 'hospital') => setUserType(value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select user type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="patient">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          Patient
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="hospital">
+                        <div className="flex items-center gap-2">
+                          <Hospital className="h-4 w-4" />
+                          Hospital
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="full-name">Full Name</Label>
+                  <Input
+                    id="full-name"
+                    type="text"
+                    placeholder="Enter your full name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="username">Username</Label>
                   <Input
                     id="username"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value)}
-                    placeholder="Enter username"
+                    type="text"
+                    placeholder="Choose a username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     required
                   />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name</Label>
+                  <Label htmlFor="signup-email">Email</Label>
                   <Input
-                    id="fullName"
-                    value={formData.fullName}
-                    onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    placeholder="Enter full name"
+                    id="signup-email"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone (Optional)</Label>
+                  <Label htmlFor="signup-password">Password</Label>
                   <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    placeholder="Enter phone number"
+                    id="signup-password"
+                    type="password"
+                    placeholder="Create a password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="location">Location</Label>
-                  <Select value={formData.locationId} onValueChange={(value) => handleInputChange('locationId', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select your location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.map((location) => (
-                        <SelectItem key={location.id} value={location.id}>
-                          {location.name}, {location.state}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  placeholder="Enter your email"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => handleInputChange('password', e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                />
-              </div>
-            </div>
-
-            <Button
-              onClick={isSignUp ? handleSignUp : handleSignIn}
-              disabled={loading}
-              className="w-full h-12 text-lg font-semibold"
-            >
-              {loading ? 'Loading...' : (isSignUp ? 'Create Account' : 'Sign In')}
-            </Button>
-
-            <div className="text-center">
-              <Button
-                variant="link"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-primary"
-              >
-                {isSignUp 
-                  ? 'Already have an account? Sign in' 
-                  : "Don't have an account? Sign up"
-                }
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    'Create Account'
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 };

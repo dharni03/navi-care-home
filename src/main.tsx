@@ -8,7 +8,7 @@ import "@n8n/chat/dist/style.css";
 try {
   createChat({
     webhookUrl:
-      "https://dharnish0106.app.n8n.cloud/webhook/96131af3-e8d6-4fb6-ba1b-25a8cd7458f7/chat",
+      "https://dharnish0106.app.n8n.cloud/webhook/0b5dbdf5-e042-4ad8-a220-8146d98d369a/chat",
   });
 } catch (_) {}
 

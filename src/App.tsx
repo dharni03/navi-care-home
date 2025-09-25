@@ -14,6 +14,7 @@ import BookAppointment from "@/pages/BookAppointment";
 import Profile from "@/pages/Profile";
 import Patients from "@/pages/Patients";
 import Home from "@/pages/Home";
+import FirstAid from "@/pages/FirstAid";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/doctors" element={<AuthGuard><Doctors /></AuthGuard>} />
           <Route path="/appointments" element={<AuthGuard><Appointments /></AuthGuard>} />
           <Route path="/home" element={<AuthGuard><Home /></AuthGuard>} />
+          <Route path="/first-aid" element={<AuthGuard><FirstAid /></AuthGuard>} />
           <Route path="/patients" element={<AuthGuard><Patients /></AuthGuard>} />
           <Route path="/emergency" element={<AuthGuard><EmergencyAlerts /></AuthGuard>} />
           <Route path="/book" element={<AuthGuard><BookAppointment /></AuthGuard>} />

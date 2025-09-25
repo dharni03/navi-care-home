@@ -97,7 +97,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       description: t.firstAidDesc,
       icon: BookOpen,
       variant: 'secondary' as const,
-      action: () => console.log('First aid guide'),
+      action: () => navigate('/first-aid'),
     },
     {
       title: t.patientHistory,
